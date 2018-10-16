@@ -3,7 +3,7 @@
 'use strict';
 
 const fs     = require( 'fs' );
-const github = require( 'github' );
+const github = require( '@octokit/rest' );
 const path   = require( 'path' );
 
 function getFullPath( filename ) {
@@ -53,7 +53,7 @@ function processIssuesPage( pageNumber, issuesToClose ) {
 		if ( err ) {
 			throw err;
 		}
-		const issues = res.filter( issue => ! issue.pull_request );
+		const issues = res.data.filter( issue => ! issue.pull_request );
 		const toCloseThisPage = issues.filter( issue => {
 			if ( issue.number < config.firstIssueNumber ) {
 				return false;
