@@ -42,7 +42,7 @@ try {
 	// The file hasn't been created yet; no problem
 }
 
-function processIssuesPage( pageNumber, issuesToClose ) {
+function processIssuesPage( pageNumber, issuesToComment ) {
 	console.log( 'Getting page %d of open issues...', pageNumber );
 	gh.issues.getForRepo( {
 		owner    : config.owner,
@@ -53,14 +53,22 @@ function processIssuesPage( pageNumber, issuesToClose ) {
 		if ( err ) {
 			throw err;
 		}
-		const issues = res.data.filter( issue => ! issue.pull_request );
-		const toCloseThisPage = issues.filter( issue => {
+		let issues = res.data;
+		if ( config.type === 'issues' ) {
+			issues = issues.filter( issue => ! issue.pull_request );
+		} else if ( config.type === 'pulls' ) {
+			issues = issues.filter( issue => !! issue.pull_request );
+		}
+		if ( config.author ) {
+			issues = issues.filter( issue => issue.user.login === config.author );
+		}
+		const toCommentThisPage = issues.filter( issue => {
 			if ( issue.number < config.firstIssueNumber ) {
 				return false;
 			}
 			if ( issuesProcessed[ issue.number ] ) {
 				console.log(
-					'Ignoring issue %d ("%s")',
+					'Ignoring issue/PR %d ("%s")',
 					issue.number,
 					issue.title
 				);
@@ -69,28 +77,25 @@ function processIssuesPage( pageNumber, issuesToClose ) {
 			return true;
 		} );
 		console.log(
-			'Issues: %d; to close: %d',
+			'Issues/PRs: %d; to comment: %d',
 			issues.length,
-			toCloseThisPage.length
+			toCommentThisPage.length
 		);
-		issuesToClose = issuesToClose.concat( toCloseThisPage );
+		issuesToComment = issuesToComment.concat( toCommentThisPage );
 		if ( gh.hasNextPage( res ) ) {
-			processIssuesPage( pageNumber + 1, issuesToClose );
+			processIssuesPage( pageNumber + 1, issuesToComment );
 		} else {
-			closeIssues( issuesToClose );
+			commentOnIssues( issuesToComment );
 		}
 	} );
 }
 
-function closeIssues( issues ) {
+function commentOnIssues( issues ) {
 	if ( ! issues.length ) {
 		return;
 	}
 	const issue = issues[ 0 ];
 	let message = config.message;
-	if ( issue.number % 1000 === 0 ) {
-		message += '\n\n:tada: Congrats on issue number ' + issue.number + '!';
-	}
 	gh.issues.createComment( {
 		owner  : config.owner,
 		repo   : config.repo,
@@ -100,30 +105,20 @@ function closeIssues( issues ) {
 		if ( err ) {
 			throw err;
 		}
-		gh.issues.edit( {
-			owner  : config.owner,
-			repo   : config.repo,
-			number : issue.number,
-			state  : 'closed',
-		}, ( err, res ) => {
-			if ( err ) {
-				throw err;
-			}
-			issuesProcessed[ issue.number ] = {
-				title : issue.title,
-				date  : new Date().toString(),
-			};
-			fs.writeFileSync(
-				getFullPath( 'processed.json' ),
-				JSON.stringify( issuesProcessed, null, 4 ) + '\n'
-			);
-			console.log(
-				'Closed issue %d ("%s")',
-				issue.number,
-				issue.title
-			);
-			closeIssues( issues.slice( 1 ) );
-		} );
+		issuesProcessed[ issue.number ] = {
+			title : issue.title,
+			date  : new Date().toString(),
+		};
+		fs.writeFileSync(
+			getFullPath( 'processed.json' ),
+			JSON.stringify( issuesProcessed, null, 4 ) + '\n'
+		);
+		console.log(
+			'Commented on issue/PR %d ("%s")',
+			issue.number,
+			issue.title
+		);
+		commentOnIssues( issues.slice( 1 ) );
 	} );
 }
 
